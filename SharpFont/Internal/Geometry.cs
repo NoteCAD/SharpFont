@@ -33,7 +33,7 @@ namespace SharpFont {
         public static explicit operator Vector2 (Point p) => new Vector2((int)p.X, (int)p.Y);
     }
 
-    struct PointF {
+    public struct PointF {
         public Vector2 P;
         public PointType Type;
 
@@ -49,7 +49,7 @@ namespace SharpFont {
         public static implicit operator Vector2 (PointF p) => p.P;
     }
 
-    enum PointType {
+    public enum PointType {
         OnCurve,
         Quadratic,
         Cubic
@@ -110,7 +110,7 @@ namespace SharpFont {
             }
         }
 
-        public static void DecomposeContour (Renderer renderer, int firstIndex, int lastIndex, PointF[] points) {
+        public static void DecomposeContour (IFontRenderer renderer, int firstIndex, int lastIndex, PointF[] points) {
             var pointIndex = firstIndex;
             var start = points[pointIndex];
             var end = points[lastIndex];

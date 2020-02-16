@@ -2,9 +2,16 @@
 using System.Numerics;
 
 namespace SharpFont {
+
+	public interface IFontRenderer {
+        void MoveTo(Vector2 point);
+        void LineTo (Vector2 point);
+        void QuadraticCurveTo (Vector2 control, Vector2 point);
+	}
+
     // handles rasterizing curves to a bitmap
     // the algorithm is heavily inspired by the FreeType2 renderer; thanks guys!
-    unsafe class Renderer {
+    unsafe class Renderer : IFontRenderer {
         Surface surface;                // the surface we're currently rendering to
         int[] scanlines;                // one scanline per Y, points into cell buffer
         int[] curveLevels;

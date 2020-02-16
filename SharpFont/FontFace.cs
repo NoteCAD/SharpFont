@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Threading;
 
 namespace SharpFont {
+
     /// <summary>
     /// Represents a single font face, maintaining all font data in memory.
     /// </summary>
@@ -252,6 +253,37 @@ namespace SharpFont {
             );
         }
 
+		public Glyph GetUnhitedGlyph(CodePoint codePoint, float pixelSize) {
+            var glyphIndex = charMap.Lookup(codePoint);
+            if (glyphIndex < 0)
+                return null;
+
+            // set up the control value table
+            var scale = ComputeScale(pixelSize);
+
+            // get metrics
+            var glyph = glyphs[glyphIndex];
+            var horizontal = hmetrics[glyphIndex];
+            var vtemp = vmetrics?[glyphIndex];
+            if (vtemp == null) {
+                var synth = verticalSynthesized;
+                synth.FrontSideBearing -= glyph.MaxY;
+                vtemp = synth;
+            }
+            var vertical = vtemp.GetValueOrDefault();
+
+            // build and transform the glyph
+            var points = new List<PointF>(32);
+            var contours = new List<int>(32);
+            var transform = Matrix3x2.CreateScale(scale);
+            Geometry.ComposeGlyphs(glyphIndex, 0, ref transform, points, contours, glyphs);
+
+            var pointArray = points.ToArray();
+            var contourArray = contours.ToArray();
+
+            return new Glyph(renderer, pointArray, contourArray, horizontal.Advance * scale, raw:true);
+		}
+
         /// <summary>
         /// Gets glyph data for a specific character.
         /// </summary>
@@ -343,8 +375,8 @@ namespace SharpFont {
     /// </summary>
     public sealed class Glyph {
         readonly Renderer renderer;
-        readonly PointF[] points;
-        readonly int[] contours;
+        public readonly PointF[] points;
+        public readonly int[] contours;
 
         /// <summary>
         /// The width of the glyph.
@@ -376,7 +408,7 @@ namespace SharpFont {
         /// </summary>
         public readonly GlyphMetrics VerticalMetrics;
 
-        internal Glyph (Renderer renderer, PointF[] points, int[] contours, float linearHorizontalAdvance) {
+        internal Glyph (Renderer renderer, PointF[] points, int[] contours, float linearHorizontalAdvance, bool raw = false) {
             this.renderer = renderer;
             this.points = points;
             this.contours = contours;
@@ -384,7 +416,8 @@ namespace SharpFont {
             // find the bounding box
             var min = new Vector2(float.MaxValue, float.MaxValue);
             var max = new Vector2(float.MinValue, float.MinValue);
-            var pointCount = points.Length - 4;
+            var pointCount = points.Length;
+			if(!raw) pointCount -= 4;
             for (int i = 0; i < pointCount; i++) {
                 min = Vector2.Min(min, points[i].P);
                 max = Vector2.Max(max, points[i].P);
@@ -401,12 +434,17 @@ namespace SharpFont {
             RenderWidth = (int)Math.Ceiling(max.X) - shiftX;
             RenderHeight = (int)Math.Ceiling(max.Y) - shiftY;
 
-            // translate the points so that 0,0 is at the bottom left corner
-            var offset = new Vector2(-shiftX, -shiftY);
-            for (int i = 0; i < pointCount; i++)
-                points[i] = points[i].Offset(offset);
-
-            HorizontalMetrics = new GlyphMetrics(new Vector2(min.X, max.Y), points[pointCount + 1].P.X - points[pointCount].P.X, linearHorizontalAdvance);
+            if(!raw) {
+				// translate the points so that 0,0 is at the bottom left corner
+				var offset = new Vector2(-shiftX, -shiftY);
+				for (int i = 0; i < pointCount; i++)
+					points[i] = points[i].Offset(offset);
+			}
+			if(!raw) {
+				HorizontalMetrics = new GlyphMetrics(new Vector2(min.X, max.Y), points[pointCount + 1].P.X - points[pointCount].P.X, linearHorizontalAdvance);
+			} else {
+				HorizontalMetrics = new GlyphMetrics(new Vector2(min.X, max.Y), 0, linearHorizontalAdvance);
+			}
 
             // TODO: vertical metrics
         }
@@ -443,6 +481,23 @@ namespace SharpFont {
 
             // blit the result to the target surface
             renderer.BlitTo(surface);
+        }
+
+        public void RenderTo (IFontRenderer renderer) {
+            // check for an empty outline, which obviously results in an empty render
+            if (points.Length <= 0 || contours.Length <= 0)
+                return;
+
+            // walk each contour of the outline and render it
+            var firstIndex = 0;
+            for (int i = 0; i < contours.Length; i++) {
+                // decompose the contour into drawing commands
+                var lastIndex = contours[i];
+                Geometry.DecomposeContour(renderer, firstIndex, lastIndex, points);
+
+                // next contour starts where this one left off
+                firstIndex = lastIndex + 1;
+            }
         }
     }
 }
